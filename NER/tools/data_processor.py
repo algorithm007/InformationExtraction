@@ -134,12 +134,12 @@ def convert_examples_to_features(examples, tokenizer, label_list, max_seq_length
             example.text_a = " ".join(example.text_a)
 
         tokens = tokenizer.tokenize(example.text_a)
-        label_idx = [label_map[x] for x in example.labels]
+        label_ids = [label_map[x] for x in example.labels]
         # [CLS] [SEP]
         special_tokens_count = 2
-        if len(tokens) > max_seq_length - special_tokens_count:
-            tokens = tokens[:max_seq_length-special_tokens_count]
-            label_ids = label_idx[:max_seq_length-special_tokens_count]
+        tokens = tokens[:max_seq_length-special_tokens_count]
+        label_ids = label_ids[:max_seq_length-special_tokens_count]
+
 
         # The convertion in BERT is:
         # (a) For sequence pairs:
@@ -154,11 +154,12 @@ def convert_examples_to_features(examples, tokenizer, label_list, max_seq_length
         segment_ids = [0] * len(tokens)
 
         cls_token = "[CLS]"
-        tokens = cls_token + cls_token
+        tokens = [cls_token] + tokens
         label_ids = [label_map['O']] + label_ids
         segment_ids = [0] + segment_ids
 
         input_ids = tokenizer.convert_tokens_to_ids(tokens)
+
         input_mask = [1] * len(input_ids)
         input_len = len(label_ids)
 

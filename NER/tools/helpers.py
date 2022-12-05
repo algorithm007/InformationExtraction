@@ -117,9 +117,9 @@ def get_argparse():
 
 
 def init_logger(log_file=None, log_level=logging.INFO):
+    if not os.path.exists(os.path.dirname(log_file)):
+        os.makedirs(os.path.dirname(log_file))
     logger = logging.getLogger()
-    if not os.path.exists(log_file):
-        os.mkdir(log_file)
     log_format = logging.Formatter(
         fmt="%(asctime)s-%(levelname)s-%(message)s",
         datefmt="%Y-%m-%d %H:%M:%S")
@@ -152,7 +152,7 @@ def collate_fn(batch):
     all_input_ids, all_attention_mask, all_token_type_ids, all_labels, all_lens = map(torch.stack, zip(*batch))
     max_len = max(all_lens).item()
 
-    all_input_ids = all_input_ids[:max_len]
+    all_input_ids = all_input_ids[:, :max_len]
     all_attention_mask = all_attention_mask[:, :max_len]
     all_token_type_ids = all_token_type_ids[:, :max_len]
     all_labels = all_labels[:, :max_len]

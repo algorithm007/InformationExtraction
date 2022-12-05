@@ -16,7 +16,7 @@ import json
 import torch
 from torch.utils.data import RandomSampler, DataLoader, DistributedSampler, SequentialSampler
 from transformers import BertConfig, BertModel, BertTokenizer
-from transformers import AdamW, get_linear_schedule_with_warmup
+from transformers import AdamW, get_linear_schedule_with_warmup, WEIGHTS_NAME
 import torch.nn as nn
 
 from tools.helpers import get_argparse, ProgressBar, json_to_text
@@ -24,21 +24,21 @@ from tools.helpers import init_logger, seed_everything, collate_fn
 from tools.data_processor import ner_processors as processors
 from tools.data_processor import load_and_cache_examples
 from tools.ner_metrics import SeqEntityScore, get_entities
-
+from models.bert_for_ner import BertCrfForNer
 
 MODEL_CLASSES = {
     # bert-wwm
-    'bert': (BertConfig, BertModel, BertTokenizer)
+    'bert': (BertConfig, BertCrfForNer, BertTokenizer)
 }
 
 
 def train(args, train_dataset, model, tokenizer, logger=None):
     """train the model"""
-    args.train_batch_size = args.per_gpu_batch_size * max(1, args.n_gpu)
+    args.train_batch_size = args.per_gpu_train_batch_size * max(1, args.n_gpu)
     train_sampler = RandomSampler(train_dataset) if args.local_rank == -1 else DistributedSampler(train_dataset)
     train_dataloader = DataLoader(train_dataset, sampler=train_sampler, batch_size=args.train_batch_size,
                                   collate_fn=collate_fn)
-    if args.max_step > 0:
+    if args.max_steps > 0:
         t_total = args.max_steps
         args.num_train_epochs = args.max_steps // (len(train_dataloader) // args.gradient_accumulation_steps) + 1
     else:
@@ -118,7 +118,7 @@ def train(args, train_dataset, model, tokenizer, logger=None):
     steps_trained_in_current_epoch = 0
 
     # check if continuing training from a checkpoint
-    if os.path.exists(args.model_name_or_path) and 'checkpoint' in args.model_namr_or_path:
+    if os.path.exists(args.model_name_or_path) and 'checkpoint' in args.model_name_or_path:
         # set global_step to global_step of last saved checkpoint from model path
         global_step = int(args.model_name_or_path.split("-")[1].split("/")[0])
         epochs_trained = global_step // (len(train_dataloader) // args.gradient_accumulation_steps)
@@ -200,7 +200,7 @@ def evaluate(args, model, tokenizer, prefix="", logger=None):
     eval_output_dir = args.output_dir
     if not os.path.exists(eval_output_dir) and args.local_rank in [-1, 0]:
         os.makedirs(eval_output_dir)
-    eval_dataset = load_and_cache_examples(args, args.task_name, tokenizer, data_type="dev")
+    eval_dataset = load_and_cache_examples(args, args.task_name, tokenizer, data_type="dev", logger=logger)
     args.eval_batch_size = args.per_gpu_eval_batch_size * max(1, args.n_gpu)
 
     # Note that DistributedSampler samples randomly
@@ -334,14 +334,13 @@ def predict(args, model, tokenizer, prefix="", logger=None):
 def main():
     args = get_argparse().parse_args()
 
-    if not os.path.exists(args.oputput_dir):
-        os.mkdir(args.output_dir)
+    if not os.path.exists(args.output_dir):
+        os.makedirs(args.output_dir)
     args.output_dir = args.output_dir + '{}'.format(args.model_type)
     if not os.path.exists(args.output_dir):
         os.mkdir(args.output_dir)
 
-    time_ = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-    logger = init_logger(log_file=os.path.join(args.output_dir, f"{args.model_type}-{args.task_name}-{time_}.log"))
+    logger = init_logger(log_file=os.path.join(args.log_dir, f"{args.model_type}-{args.task_name}.log"))
 
     if os.path.exists(args.output_dir) and os.listdir(args.output_dir) \
             and args.do_train and not args.overwrite_output_dir:
@@ -357,7 +356,7 @@ def main():
         args.n_gpu = 1
 
     args.device = device
-    logger.warning("Process rank: %s, device: %s, distributed training: %s, 16-bits training: %s",
+    logger.warning("Process rank: %s, device: %s, n_gpu: %s, distributed training: %s, 16-bits training: %s",
                    args.local_rank, device, args.n_gpu, bool(args.local_rank != -1), args.fp16)
 
     seed_everything(args.seed)
@@ -378,8 +377,11 @@ def main():
     config_class, model_class, tokenizer_class = MODEL_CLASSES[args.model_type]
 
     config = config_class.from_pretrained(args.model_name_or_path, num_labels=num_labels)
-    tokenizer = tokenizer_class.from_pretrain(args.model_name_or_path, do_lower_case=args.do_lower_case)
+    tokenizer = tokenizer_class.from_pretrained(args.model_name_or_path, do_lower_case=args.do_lower_case)
     model = model_class.from_pretrained(args.model_name_or_path, config=config)
+
+    if args.local_rank == 0:
+        torch.distributed.barrier()
 
     model.to(args.device)
     logger.info(f"Training/Evaluation parameters {args}")
@@ -417,7 +419,7 @@ def main():
             prefix = checkpoint.split('/')[-1] if checkpoint.find('checkpoint') != -1 else ""
             model = model_class.from_pretrained(checkpoint, config=config)
             model.to(args.device)
-            result = evaluate(args, model, tokenizer, prefix=prefix)
+            result = evaluate(args, model, tokenizer, prefix=prefix, logger=logger)
             if global_step:
                 result = {"{}_{}".format(global_step, k): v for k, v in result.items()}
             results.update(result)
@@ -438,7 +440,7 @@ def main():
             prefix = checkpoint.split('/')[-1] if checkpoint.find('checkpoint') != -1 else ""
             model = model_class.from_pretrained(checkpoint, config=config)
             model.to(args.device)
-            predict(args, model, tokenizer, prefix=prefix)
+            predict(args, model, tokenizer, prefix=prefix, logger=logger)
 
 
 if __name__ == "__main__":
