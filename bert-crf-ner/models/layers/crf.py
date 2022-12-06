@@ -6,7 +6,7 @@
 @File     : crf.py
 @IDE      : PyCharm
 @Author   : 算法小学僧
-@Date     : 2022/12/5 14:49 
+@Date     : 2022/12/6 10:03 
 '''
 import torch
 import torch.nn as nn
@@ -420,25 +420,3 @@ class CRF(nn.Module):
             best_tags_arr[idx] = best_tags.data.view(batch_size, -1) // nbest
 
         return torch.where(mask.unsqueeze(-1), best_tags_arr, oor_tag).permute(2, 1, 0)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

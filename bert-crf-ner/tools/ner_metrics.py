@@ -6,9 +6,8 @@
 @File     : ner_metrics.py
 @IDE      : PyCharm
 @Author   : 算法小学僧
-@Date     : 2022/12/5 13:38 
+@Date     : 2022/12/6 14:09 
 '''
-import torch
 from collections import Counter
 
 
@@ -64,7 +63,7 @@ def get_entity_bios(seq, id2label):
 
 
 class SeqEntityScore(object):
-    def __init__(self, id2label,markup='bios'):
+    def __init__(self, id2label, markup='bios'):
         self.id2label = id2label
         self.markup = markup
         self.reset()

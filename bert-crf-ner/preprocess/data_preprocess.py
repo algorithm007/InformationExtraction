@@ -3,10 +3,10 @@
 
 '''
 @Project  : DjangoBlog
-@File     : data_processor.py
+@File     : data_preprocess.py
 @IDE      : PyCharm
 @Author   : 算法小学僧
-@Date     : 2022/12/5 09:22 
+@Date     : 2022/12/5 23:24 
 '''
 import os
 import json
@@ -137,8 +137,8 @@ def convert_examples_to_features(examples, tokenizer, label_list, max_seq_length
         label_ids = [label_map[x] for x in example.labels]
         # [CLS] [SEP]
         special_tokens_count = 2
-        tokens = tokens[:max_seq_length-special_tokens_count]
-        label_ids = label_ids[:max_seq_length-special_tokens_count]
+        tokens = tokens[:(max_seq_length - special_tokens_count)]
+        label_ids = label_ids[:(max_seq_length-special_tokens_count)]
 
 
         # The convertion in BERT is:
@@ -185,41 +185,37 @@ def convert_examples_to_features(examples, tokenizer, label_list, max_seq_length
 
 
 def load_and_cache_examples(args, task_name, tokenizer, data_type="train", logger=None):
-    if args.local_rank not in [-1, 0] and data_type != "evaluate":
-        torch.distributed.barrier()
+    data_dir = args.get('data_dir', None)
     processor = ner_processors[task_name]()
     # load data features from cache or dataset file
-    cached_features_file = os.path.join(args.data_dir, "cached_crf_{}_{}_{}_{}".format(
+    cached_features_file = os.path.join(data_dir, "cached_crf_{}_{}_{}_{}".format(
         data_type,
-        list(filter(None, args.model_name_or_path.split('/'))).pop(),
-        str(args.train_max_seq_length if data_type == 'train' else args.eval_max_seq_length),
+        list(filter(None, args.get("model_name_or_path").split('/'))).pop(),
+        str(args.get("max_seq_length")),
         str(task_name)))
 
-    if os.path.exists(cached_features_file) and not args.overwrite_cache:
+    if os.path.exists(cached_features_file) and not args.get("overwrite_cache"):
         logger.info(f"Loading features from cached file {cached_features_file}")
         features = torch.load(cached_features_file)
     else:
-        logger.info(f"Creating features from dataset file at {args.data_dir}")
-        label_list = processor.get_labels(args.data_dir)
+        logger.info(f"Creating features from dataset file at {data_dir}")
+        label_list = processor.get_labels(data_dir)
 
         if data_type == "train":
-            examples = processor.get_train_examples(args.data_dir)
+            examples = processor.get_train_examples(data_dir)
         elif data_type == "dev":
-            examples = processor.get_dev_examples(args.data_dir)
+            examples = processor.get_dev_examples(data_dir)
         else:
-            examples = processor.get_test_examples(args.data_dir)
+            examples = processor.get_test_examples(data_dir)
 
         features = convert_examples_to_features(examples=examples,
                                                 tokenizer=tokenizer,
                                                 label_list=label_list,
-                                                max_seq_length=args.train_max_seq_length if data_type == "train" else \
-                                                    args.eval_max_seq_length,
+                                                max_seq_length=args.get("max_seq_length"),
                                                 logger=logger)
-        if args.local_rank in [-1, 0]:
-            logger.info(f"Saving features into cached file {cached_features_file}")
-            torch.save(features, cached_features_file)
-    if args.local_rank == 0 and data_type != "evaluate":
-        torch.distributed.barrier()
+
+        logger.info(f"Saving features into cached file {cached_features_file}")
+        torch.save(features, cached_features_file)
 
     # convert to tensors and build dataset
     all_input_ids = torch.tensor([f.input_ids for f in features]).long()
@@ -235,3 +231,5 @@ def load_and_cache_examples(args, task_name, tokenizer, data_type="train", logge
 ner_processors = {
     "clue": ClueProcessor,
 }
+
+

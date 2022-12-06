@@ -1,8 +1,0 @@
-./data
-./pretrained_model
-./logs
-./outputs
-./chinese-bert-wwm-ext
-./models/__pycache__
-./tools/__pycache__
-./models/layers/__pycache__

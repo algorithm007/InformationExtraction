@@ -6,9 +6,8 @@
 @File     : bert_for_ner.py
 @IDE      : PyCharm
 @Author   : 算法小学僧
-@Date     : 2022/12/5 14:49 
+@Date     : 2022/12/6 10:03 
 '''
-
 from transformers import BertModel, BertPreTrainedModel
 import torch.nn as nn
 from models.layers.crf import CRF
@@ -34,23 +33,3 @@ class BertCrfForNer(BertPreTrainedModel):
             loss = self.crf(emissions=logits, tags=labels, mask=attention_mask)
             outputs = (-1*loss,)+outputs
         return outputs  # (loss), scores
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
